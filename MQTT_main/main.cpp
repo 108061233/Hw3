@@ -1,3 +1,5 @@
+#include <math.h>
+#include <string.h>  
 #include "mbed.h"
 #include "MQTTNetwork.h"
 #include "MQTTmbed.h"
@@ -14,7 +16,8 @@ void tilt(Arguments *in, Reply *out);
 void getAcc(Arguments *in, Reply *out);
 RPCFunction rpctilt(&tilt, "tilt");
 RPCFunction rpcAcc(&getAcc, "getAcc");
-int mode1, angle;
+int mode1;
+float angle;
 int16_t DataXYZ[3] = {0};
 //InterruptIn btn3(SW3);
 volatile int message_num = 0;
@@ -79,16 +82,20 @@ void tilt_angle(MQTT::Client<MQTTNetwork, Countdown>* client)
         myled2 = !myled2;
         BSP_ACCELERO_Init();
         BSP_ACCELERO_AccGetXYZ(DataXYZ);
-        MQTT::Message message;
-        char buff[30] = {0};
-        sprintf(buff, "%d, %d, %d\n", DataXYZ[0], DataXYZ[1], DataXYZ[2]);
-        message.qos = MQTT::QOS0;
-        message.retained = false;
-        message.dup = false;
-        message.payload = (void*) buff;
-        message.payloadlen = strlen(buff) + 1;
-        int rc = client->publish(topic, message);
-        ThisThread::sleep_for(500ms);
+        angle = atan(DataXYZ[0] / DataXYZ[2]) * 180 / 3.14;
+
+        if (angle > 53) {
+            MQTT::Message message;
+            char buff[30];
+            sprintf(buff, "angle: %f", angle);
+            message.qos = MQTT::QOS0;
+            message.retained = false;
+            message.dup = false;
+            message.payload = (void*) buff;
+            message.payloadlen = strlen(buff) + 1;
+            int rc = client->publish(topic, message);
+        }
+        ThisThread::sleep_for(100ms);
       } else myled2 = 0;      
    }
 }
