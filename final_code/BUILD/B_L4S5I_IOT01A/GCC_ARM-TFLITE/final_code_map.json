@@ -35,10 +35,10 @@
     {
         "module": "[fill]",
         "size": {
-            ".text": 290,
+            ".text": 282,
             ".data": 13,
             ".bss": 49,
-            ".text-delta": 44,
+            ".text-delta": 0,
             ".data-delta": 0,
             ".bss-delta": 0
         }
@@ -68,7 +68,7 @@
     {
         "module": "[lib]/m.a",
         "size": {
-            ".text": 3412,
+            ".text": 3768,
             ".data": 1,
             ".bss": 0,
             ".text-delta": 0,
@@ -134,10 +134,10 @@
     {
         "module": "main.o",
         "size": {
-            ".text": 5412,
+            ".text": 5596,
             ".data": 40,
-            ".bss": 64127,
-            ".text-delta": 20,
+            ".bss": 64343,
+            ".text-delta": 0,
             ".data-delta": 0,
             ".bss-delta": 0
         }
@@ -156,7 +156,7 @@
     {
         "module": "mbed-os/connectivity",
         "size": {
-            ".text": 10686,
+            ".text": 10666,
             ".data": 99,
             ".bss": 181,
             ".text-delta": 0,
@@ -287,10 +287,10 @@
     },
     {
         "summary": {
-            "static_ram": 84336,
+            "static_ram": 84552,
             "static_ram_delta": 0,
-            "total_flash": 154088,
-            "total_flash_delta": 64
+            "total_flash": 154600,
+            "total_flash_delta": 0
         }
     }
 ]
