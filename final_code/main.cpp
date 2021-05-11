@@ -21,6 +21,8 @@
 // LCD
 #include "uLCD_4DGL.h"
 
+using namespace std::chrono;
+
 // GLOBAL VARIABLES
 uLCD_4DGL uLCD(D1, D0, D2);
 // wifi
@@ -51,13 +53,12 @@ const char* topic = "Mbed";
 Thread wifi_thread;
 Thread mqtt_thread;
 Thread tilt_thread;
-Thread UI_thread;
+Thread UI_thread(osPriorityNormal, 8 * 1024);
 EventQueue queue(32 * EVENTS_EVENT_SIZE);
 
 #define label_num 3
 struct Config
 {
-
    // This must be the same as seq_length in the src/model_train/config.py
    const int seq_length = 64;
 
@@ -99,42 +100,42 @@ uint8_t tensor_arena[kTensorArenaSize];
 
 // Return the result of the last prediction
 int PredictGesture(float* output) {
-  // How many times the most recent gesture has been matched in a row
-  static int continuous_count = 0;
-  // The result of the last prediction
-  static int last_predict = -1;
+    // How many times the most recent gesture has been matched in a row
+    static int continuous_count = 0;
+    // The result of the last prediction
+    static int last_predict = -1;
 
-  // Find whichever output has a probability > 0.8 (they sum to 1)
-  int this_predict = -1;
-  for (int i = 0; i < label_num; i++) {
-    if (output[i] > 0.8) this_predict = i;
-  }
+    // Find whichever output has a probability > 0.8 (they sum to 1)
+    int this_predict = -1;
+    for (int i = 0; i < label_num; i++) {
+        if (output[i] > 0.8) this_predict = i;
+    }
 
-  // No gesture was detected above the threshold
-  if (this_predict == -1) {
+    // No gesture was detected above the threshold
+    if (this_predict == -1) {
+        continuous_count = 0;
+        last_predict = label_num;
+        return label_num;
+    }
+
+    if (last_predict == this_predict) {
+        continuous_count += 1;
+    } else {
+        continuous_count = 0;
+    }
+    last_predict = this_predict;
+
+    // If we haven't yet had enough consecutive matches for this gesture,
+    // report a negative result
+    if (continuous_count < config.consecutiveInferenceThresholds[this_predict]) {
+        return label_num;
+    }
+    // Otherwise, we've seen a positive result, so clear all our variables
+    // and report it
     continuous_count = 0;
-    last_predict = label_num;
-    return label_num;
-  }
+    last_predict = -1;
 
-  if (last_predict == this_predict) {
-    continuous_count += 1;
-  } else {
-    continuous_count = 0;
-  }
-  last_predict = this_predict;
-
-  // If we haven't yet had enough consecutive matches for this gesture,
-  // report a negative result
-  if (continuous_count < config.consecutiveInferenceThresholds[this_predict]) {
-    return label_num;
-  }
-  // Otherwise, we've seen a positive result, so clear all our variables
-  // and report it
-  continuous_count = 0;
-  last_predict = -1;
-
-  return this_predict;
+    return this_predict;
 }
 
 void LCD(float angle_dis)
@@ -150,7 +151,7 @@ void messageArrived(MQTT::MessageData& md) {
     char msg[300];
     sprintf(msg, "Message arrived: QoS%d, retained %d, dup %d, packetID %d\r\n", message.qos, message.retained, message.dup, message.id);
     printf(msg);
-    ThisThread::sleep_for(1000ms);
+    ThisThread::sleep_for(100ms);
     char payload[300];
     sprintf(payload, "Payload %.*s\r\n", message.payloadlen, (char*)message.payload);
     printf(payload);
@@ -224,7 +225,7 @@ void close_mqtt() {
     closed = true;
 }
 
-int angle_sel()
+void angle_sel()
 {
     /*-------------TF set------------*/
 
@@ -260,15 +261,15 @@ int angle_sel()
         tflite::BuiltinOperator_DEPTHWISE_CONV_2D,
         tflite::ops::micro::Register_DEPTHWISE_CONV_2D());
     micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_MAX_POOL_2D,
-                               tflite::ops::micro::Register_MAX_POOL_2D());
+                                tflite::ops::micro::Register_MAX_POOL_2D());
     micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_CONV_2D,
-                               tflite::ops::micro::Register_CONV_2D());
+                                tflite::ops::micro::Register_CONV_2D());
     micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_FULLY_CONNECTED,
-                               tflite::ops::micro::Register_FULLY_CONNECTED());
+                                tflite::ops::micro::Register_FULLY_CONNECTED());
     micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_SOFTMAX,
-                               tflite::ops::micro::Register_SOFTMAX());
+                                tflite::ops::micro::Register_SOFTMAX());
     micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_RESHAPE,
-                               tflite::ops::micro::Register_RESHAPE(), 1);
+                                tflite::ops::micro::Register_RESHAPE(), 1);
 
     // Build an interpreter to run the model with
     static tflite::MicroInterpreter static_interpreter(
@@ -327,11 +328,14 @@ int angle_sel()
 
             // Produce an output
             if (gesture_index < label_num) {
-                if (gesture_index == 0) angle_dis = 20;
+                error_reporter->Report(config.output_message[gesture_index]);
+                if (gesture_index == 0) 
+                    if (angle_dis == 80) angle_dis = 0;
+                    else angle_dis += 20;
                 else if (gesture_index == 1) angle_dis = 40;
                 else if (gesture_index == 2) angle_dis = 60;
                 else angle_dis = 0;
-                error_reporter->Report(config.output_message[gesture_index]);
+            
             }
             LCD(angle_dis);
             ThisThread::sleep_for(100ms);
@@ -401,7 +405,6 @@ void wifi_set()
 
     mqtt_thread.start(callback(&queue, &EventQueue::dispatch_forever));
     tilt_thread.start(callback(&tilt_angle, &client));
-    UI_thread.start(&angle_sel);
     btn2.rise(queue.event(&publish_sel_angle, &client));
     //btn3.rise(&close_mqtt);
 
@@ -428,9 +431,10 @@ void wifi_set()
 }
 
 int main() {
+    UI_thread.start(&angle_sel);
+    wifi_thread.start(&wifi_set);
 
     BSP_ACCELERO_Init();
-
     //The mbed RPC classes are now wrapped to create an RPC enabled version - see RpcClasses.h so don't add to base class
 
     // receive commands, and send back the responses
@@ -438,8 +442,6 @@ int main() {
 
     FILE *devin = fdopen(&pc, "r");
     FILE *devout = fdopen(&pc, "w");
-
-    wifi_thread.start(&wifi_set);
 
     while (1) {
         memset(buf, 0, 256);
